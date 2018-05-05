@@ -1,8 +1,10 @@
 import hashlib
 import json
 
+from textwrap import dedent
 from time import time
 from uuid import uuid4
+from flask import Flask
 
 
 class Blockchain(object):
@@ -113,3 +115,43 @@ class Blockchain(object):
 		"""
 		the last block of the blockchain
 		"""
+
+# Instantiate our Node
+app = Flask(__name__)
+
+# Generate a globally unique address for this node
+nodeIdentifier = str(uuid4()).replace('-', '')
+
+# Instantiate the Blockchain
+blockchain = Blockchain()
+
+
+@app.route("/mine", methods=["GET"])
+def mine():
+
+	return "We'll mine a new block"
+
+
+@app.route("/transactions/new", methods=["POST"]):
+def newTransaction():
+
+	return "We'll add a new transaction"
+
+
+@app.route("/chain", methods=["GET"])
+def fullChain():
+
+	response = {
+		'chain': blockchain.chain,
+		'length': len(blockchain.chain),
+	}
+
+	return jsonify(response), 200
+
+
+if __name__ == "__main__":
+
+	app.run(host='0.0.0.0', port=5000)
+
+
+
