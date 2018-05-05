@@ -4,7 +4,7 @@ import json
 from textwrap import dedent
 from time import time
 from uuid import uuid4
-from flask import Flask
+from flask import Flask, jsonify, request
 
 
 class Blockchain(object):
@@ -59,6 +59,31 @@ class Blockchain(object):
 		return self.lastBlock['index'] + 1
 
 
+	@property
+	def lastBlock(self):
+		"""
+		the last block of the blockchain
+		"""
+		return self.chain[-1]
+
+
+	@staticmethod
+	def validProof(proof, lastProof):
+		"""
+		Validates the proof against lastProof
+			- hash(proof,lastProof) should have 4 leading 0's
+
+		:param proof:		<int>	proof to validated
+		:param lastProof:	<int>	last proof generated
+		:return:			<Bool>	True iff proof is valid, False otherwise
+		"""
+
+		guess = f'{proof},{lastProof}'.encode()
+		guessHash = hashlib.sha256(guess).hexdigest()
+
+		return guessHash[:4] == "0000"
+
+
 	def proofOfWork(self, lastProof):
 		"""
 		Proof of Work Algorothm:
@@ -71,7 +96,7 @@ class Blockchain(object):
 
 		proof = 0
 
-		while validProof(proof, lastProof) == False:
+		while self.validProof(proof, lastProof) == False:
 			proof += 1
 
 		return proof
@@ -92,30 +117,6 @@ class Blockchain(object):
 		return hashlib.sha256(blockStr).hexdigest()
 
 
-	@staticmethod
-	def validProof(proof, lastProof):
-		"""
-		Validates the proof against lastProof
-			- hash(proof,lastProof) should have 4 leading 0's
-
-		:param proof:		<int>	proof to validated
-		:param lastProof:	<int>	last proof generated
-		:return:			<Bool>	True iff proof is valid, False otherwise
-		"""
-
-		guess = f'{proof},{lastProof}'.encode()
-		guessHash = hashlib.sha256(guess).hexdigest()
-
-		return guessHash[:4] == "0000"
-
-
-
-	@property
-	def lastBlock(self):
-		"""
-		the last block of the blockchain
-		"""
-
 # Instantiate our Node
 app = Flask(__name__)
 
@@ -135,11 +136,11 @@ def mine():
 	proof = blockchain.proofOfWork(lastProof)
 
 	# Must recieve reward for mining
-	blockchain.newTransaction({
-		'sender':0,
-		'recipient': nodeIdentifier,
-		'amount':1,
-	})
+	blockchain.newTransaction(
+		sender="0",
+		recipient= nodeIdentifier,
+		amount=1,
+	)
 
 	#Forge the new Block by adding it to the blockchain
 	previousHash = blockchain.hash(lastBlock)
@@ -160,7 +161,7 @@ def mine():
 def newTransaction():
 
 	values = request.get_json()
-
+	print(values)
 	# extract and check for required fields
 	required = ['sender', 'recipient', 'amount']
 	if not all(k in values for k in required):
