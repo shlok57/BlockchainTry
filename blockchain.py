@@ -71,7 +71,7 @@ class Blockchain(object):
 
 		proof = 0
 
-		while !validProof(proof, lastProof):
+		while validProof(proof, lastProof) == False:
 			proof += 1
 
 		return proof
@@ -87,7 +87,7 @@ class Blockchain(object):
 		:return:		<str> SHA256 of the block
 		"""
 
-		blockStr = json.dumps(block, sort_keys:True).encode()
+		blockStr = json.dumps(block, sort_keys=True).encode()
 
 		return hashlib.sha256(blockStr).hexdigest()
 
@@ -129,13 +129,48 @@ blockchain = Blockchain()
 @app.route("/mine", methods=["GET"])
 def mine():
 
-	return "We'll mine a new block"
+	# Run proof of work algorithm to get next proof
+	lastBlock = blockchain.lastBlock
+	lastProof = lastBlock['proof']
+	proof = blockchain.proofOfWork(lastProof)
+
+	# Must recieve reward for mining
+	blockchain.newTransaction({
+		'sender':0,
+		'recipient': nodeIdentifier,
+		'amount':1,
+	})
+
+	#Forge the new Block by adding it to the blockchain
+	previousHash = blockchain.hash(lastBlock)
+	block = blockchain.newBlock(proof, previousHash)
+
+	response = {
+		'message': "New Block forged",
+		'index': block['index'],
+		'transactions': block['transactions'],
+		'proof': block['proof'],
+		'previousHash': block['previousHash'],
+	}
+
+	return jsonify(response), 200
 
 
-@app.route("/transactions/new", methods=["POST"]):
+@app.route("/transactions/new", methods=["POST"])
 def newTransaction():
 
-	return "We'll add a new transaction"
+	values = request.get_json()
+
+	# extract and check for required fields
+	required = ['sender', 'recipient', 'amount']
+	if not all(k in values for k in required):
+		return 'Missing Values', 400
+
+	# Create a new transaction
+	index = blockchain.newTransaction(values['sender'], values['recipient'], values['amount'])
+	response = ('message', f'Transaction will be added to block {index}')
+
+	return jsonify(response), 201
 
 
 @app.route("/chain", methods=["GET"])
