@@ -1,14 +1,39 @@
+import hashlib
+import json
+from time import time
+
 class Blockchain(object):
 
 	def __init__(self):
 		self.chain = []
-		self.currentTransaction = []
+		self.currentTransactions = []
 
 		# Create the first block
-		
+		self.newBlock(previousHash=1, proof=100)
 
-	def newBlock(self):
-		pass
+
+	def newBlock(self, proof, previousHash=None):
+		"""
+		Cretes a new block in the Blockchain
+
+		:param previousHash:	<str>	Hash of the previous Block (Optional)
+		:param proof:			<int>	Proof given by Proof of work algorithm
+		:return: 				<dict>	New Block 
+		"""
+		
+		block = {
+			'index': len(self.chain) + 1,
+			'timestamp': time(),
+			'transactions': self.currentTransactions,
+			'proof': proof,
+			'previousHash': previousHash or self.hash(self.chain[-1]),
+		}
+
+		self.currentTransactions = []
+		self.chain.append(block)
+
+		return block
+
 
 	def newTransaction(self, sender, recipient, amount):
 		"""
@@ -20,7 +45,7 @@ class Blockchain(object):
 		:return:			<int>	index of the block holding the transaction
 		"""
 		
-		self.currentTransaction.append({
+		self.currentTransactions.append({
 			'sender': sender,
 			'recipient': recipient,
 			'amount': amount,
@@ -28,10 +53,23 @@ class Blockchain(object):
 
 		return self.lastBlock['index'] + 1
 
+
 	@staticmethod
 	def hash(block):
-		pass
+		"""
+		Creates a SHA256 hash of a block
+
+		:param block:	<dict>	a Block
+		:return:		<str> SHA256 of the block
+		"""
+
+		blockStr = json.dumps(block, sort_keys:True).encode()
+
+		return hashlib.sha256(blockStr).hexdigest()
+
 
 	@property
 	def lastBlock(self):
-		pass
+		"""
+		the last block of the blockchain
+		"""
