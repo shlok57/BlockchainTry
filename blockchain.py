@@ -1,10 +1,12 @@
 import hashlib
 import json
+import requests
 
 from textwrap import dedent
 from time import time
 from uuid import uuid4
 from flask import Flask, jsonify, request
+from urllib.parse import urlparse
 
 
 class Blockchain(object):
@@ -15,6 +17,9 @@ class Blockchain(object):
 
 		# Create the first block
 		self.newBlock(previousHash=1, proof=100)
+
+		# Set of nodes on the network
+		self.nodes = set()
 
 
 	def newBlock(self, proof, previousHash=None):
@@ -59,6 +64,102 @@ class Blockchain(object):
 		return self.lastBlock['index'] + 1
 
 
+	def proofOfWork(self, lastProof):
+		"""
+		Proof of Work Algorothm:
+			- Search for a number q such that hash(p,q) has 4 leading 0's, where p is the previous q
+			- p is the previous proof, q is the new proof
+
+		:param lastProof:	<int>	Last proof generated
+		:return:			<int>	New proof generated
+		"""
+
+		proof = 0
+
+		while self.validProof(proof, lastProof) == False:
+			proof += 1
+
+		return proof
+
+
+	def registerNode(self, address):
+		"""
+		Add a new node to the list of nodes
+
+		:param address:		<str>	Address of a node Eg: "http//192.168.0.5:5000"
+		:return: 			None 
+		"""
+
+		parsedURL = urlparse(address)
+		self.nodes.add(parsedURL.netloc)
+
+
+	def validChain(self, chain):
+		"""
+		Determine if blockchain is valid or not
+
+		:param chain:	<list> a blockchain
+		:return:		<Bool> true iff valid
+		"""
+
+		lastBlock = chain[0]
+		curreentIndex = 1
+
+		while curreentIndex < len(chain):
+
+			block = chain[curreentIndex]
+			print(f'{lastBlock}')
+			print(f'{block}')
+			print("\n---------------\n")
+
+			# check if the block's hash is correct
+			if block['previousHash'] != self.hash(lastBlock):
+				return False
+
+			# check proof of work is correct
+			if not self.validProof(lastBlock['proof'], block['proof']):
+				return False
+
+			lastBlock = block
+			curreentIndex += 1
+
+		return True
+
+
+	def resolveConflicts(self):
+		"""
+		This is the consensus algorithm
+		Replaces the chain with the longest existing chain in the network
+
+		:return:	<Bool>	True iff chain was replaced 
+		"""
+
+		neighbours = self.nodes
+		newChain = None
+
+		maxLen = len(self.chain)
+
+		# Grab and verify chain from all the nodes in the network
+		for node in neighbours:
+			response = requests.get(f'http://{node}/chain')
+
+			if response.status_code == 200:
+				length = response.json()['length']
+				chain = response.json()['chain']
+
+				#check if the length is longer and valid
+				if length > maxLen and self.validChain(chain):
+					maxLen = length
+					newChain = chain
+
+		# Replace our chain if we discovered a new, valid chain longer than ours
+		if newChain:
+			self.chain = newChain
+			return True
+
+		return False 
+
+
 	@property
 	def lastBlock(self):
 		"""
@@ -82,25 +183,6 @@ class Blockchain(object):
 		guessHash = hashlib.sha256(guess).hexdigest()
 
 		return guessHash[:4] == "0000"
-
-
-	def proofOfWork(self, lastProof):
-		"""
-		Proof of Work Algorothm:
-			- Search for a number q such that hash(p,q) has 4 leading 0's, where p is the previous q
-			- p is the previous proof, q is the new proof
-
-		:param lastProof:	<int>	Last proof generated
-		:return:			<int>	New proof generated
-		"""
-
-		proof = 0
-
-		while self.validProof(proof, lastProof) == False:
-			proof += 1
-
-		return proof
-
 
 
 	@staticmethod
@@ -161,7 +243,7 @@ def mine():
 def newTransaction():
 
 	values = request.get_json()
-	print(values)
+	## print(values)
 	# extract and check for required fields
 	required = ['sender', 'recipient', 'amount']
 	if not all(k in values for k in required):
@@ -185,9 +267,48 @@ def fullChain():
 	return jsonify(response), 200
 
 
+@app.route("/nodes/register", methods=["POST"])
+def registerNodes():
+	values = request.get_json()
+
+	nodes = values.get('nodes')
+	if nodes is None:
+		return "Error: Please supply a valid list of nodes", 400
+
+	for node in nodes:
+		blockchain.registerNode(node)
+
+	response = {
+		'message': 'New nodes have been added',
+		'total_nodes': list(blockchain.nodes),
+	}
+	return jsonify(response), 201
+
+
+@app.route('/nodes/resolve', methods=['GET'])
+def consensus():
+    replaced = blockchain.resolveConflicts()
+
+    if replaced:
+        response = {
+            'message': 'Our chain was replaced',
+            'new_chain': blockchain.chain
+        }
+    else:
+        response = {
+            'message': 'Our chain is authoritative',
+            'chain': blockchain.chain
+        }
+
+    return jsonify(response), 200
+
+
 if __name__ == "__main__":
+	from argparse import ArgumentParser
 
-	app.run(host='0.0.0.0', port=5000)
+	parser = ArgumentParser()
+	parser.add_argument('-p', '--port', default=5000, type=int, help='port to listen on')
+	args = parser.parse_args()
+	port = args.port
 
-
-
+	app.run(host='0.0.0.0', port=port)
