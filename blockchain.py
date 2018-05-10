@@ -36,7 +36,7 @@ class Blockchain(object):
 			'timestamp': time(),
 			'transactions': self.currentTransactions,
 			'proof': proof,
-			'previousHash': previousHash or self.hash(self.chain[-1]),
+			'previousHash': previousHash or self.hash(lastBlock),
 		}
 
 		self.currentTransactions = []
@@ -64,19 +64,22 @@ class Blockchain(object):
 		return self.lastBlock['index'] + 1
 
 
-	def proofOfWork(self, lastProof):
+	def proofOfWork(self, lastBlock):
 		"""
 		Proof of Work Algorothm:
 			- Search for a number q such that hash(p,q) has 4 leading 0's, where p is the previous q
 			- p is the previous proof, q is the new proof
 
-		:param lastProof:	<int>	Last proof generated
+		:param lastBlock:	<dict>	Last block generated
 		:return:			<int>	New proof generated
 		"""
 
+		lastProof = lastBlock['proof']
+		lastHash = self.hash(lastBlock)
+
 		proof = 0
 
-		while self.validProof(proof, lastProof) == False:
+		while self.validProof(lastProof, proof, lastHash) == False:
 			proof += 1
 
 		return proof
@@ -112,17 +115,20 @@ class Blockchain(object):
 			print(f'{block}')
 			print("\n---------------\n")
 
+			lastBlockHash = self.hash(lastBlock)
+
 			# check if the block's hash is correct
-			if block['previousHash'] != self.hash(lastBlock):
+			if block['previousHash'] != lastBlockHash:
 				return False
 
 			# check proof of work is correct
-			if not self.validProof(lastBlock['proof'], block['proof']):
+			if not self.validProof(lastBlock['proof'], block['proof'], lastBlockHash):
 				return False
 
 			lastBlock = block
 			curreentIndex += 1
 
+		print('done for')
 		return True
 
 
@@ -142,7 +148,7 @@ class Blockchain(object):
 		# Grab and verify chain from all the nodes in the network
 		for node in neighbours:
 			response = requests.get(f'http://{node}/chain')
-
+			print(f'For node: {node}\n')
 			if response.status_code == 200:
 				length = response.json()['length']
 				chain = response.json()['chain']
@@ -169,17 +175,18 @@ class Blockchain(object):
 
 
 	@staticmethod
-	def validProof(proof, lastProof):
+	def validProof(lastProof, proof, lastHash):
 		"""
 		Validates the proof against lastProof
 			- hash(proof,lastProof) should have 4 leading 0's
 
-		:param proof:		<int>	proof to validated
 		:param lastProof:	<int>	last proof generated
+		:param proof:		<int>	proof to validated
+		:param lastHash 	<str>	the hash of previous block
 		:return:			<Bool>	True iff proof is valid, False otherwise
 		"""
 
-		guess = f'{proof},{lastProof}'.encode()
+		guess = f'{lastProof},{proof},{lastHash}'.encode()
 		guessHash = hashlib.sha256(guess).hexdigest()
 
 		return guessHash[:4] == "0000"
@@ -214,8 +221,7 @@ def mine():
 
 	# Run proof of work algorithm to get next proof
 	lastBlock = blockchain.lastBlock
-	lastProof = lastBlock['proof']
-	proof = blockchain.proofOfWork(lastProof)
+	proof = blockchain.proofOfWork(lastBlock)
 
 	# Must recieve reward for mining
 	blockchain.newTransaction(
@@ -288,6 +294,8 @@ def registerNodes():
 @app.route('/nodes/resolve', methods=['GET'])
 def consensus():
     replaced = blockchain.resolveConflicts()
+    print('here')
+
 
     if replaced:
         response = {
